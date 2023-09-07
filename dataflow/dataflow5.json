@@ -1,0 +1,111 @@
+{
+	"name": "dataflow5",
+	"properties": {
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"linkedService": {
+						"referenceName": "ls_azSQL_DATASTORE",
+						"type": "LinkedServiceReference"
+					},
+					"name": "srcEmployee"
+				},
+				{
+					"linkedService": {
+						"referenceName": "ls_adls_bhaskaradls123",
+						"type": "LinkedServiceReference"
+					},
+					"name": "srcDepartment"
+				}
+			],
+			"sinks": [
+				{
+					"linkedService": {
+						"referenceName": "ls_azSQL_DATASTORE",
+						"type": "LinkedServiceReference"
+					},
+					"name": "employeedetails"
+				}
+			],
+			"transformations": [
+				{
+					"name": "lookup1"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          Empno as integer,",
+				"          Ename as string,",
+				"          Job as string,",
+				"          Hiredate as date,",
+				"          Deptno as integer,",
+				"          Salary as decimal(19,4),",
+				"          Comm as decimal(19,4)",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     format: 'query',",
+				"     store: 'sqlserver',",
+				"     query: 'SELECT Empno, Ename, Job, Hiredate, Deptno, Salary, Comm FROM Employee',",
+				"     isolationLevel: 'READ_UNCOMMITTED') ~> srcEmployee",
+				"source(output(",
+				"          DepartmentNO as short,",
+				"          DNAME as string,",
+				"          LOC as string",
+				"     ),",
+				"     useSchema: false,",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     ignoreNoFilesFound: false,",
+				"     format: 'delimited',",
+				"     fileSystem: 'datafiles',",
+				"     folderPath: 'input',",
+				"     fileName: 'department.txt',",
+				"     columnDelimiter: ',',",
+				"     escapeChar: '\\\\',",
+				"     quoteChar: '\\\"',",
+				"     columnNamesAsHeader: true) ~> srcDepartment",
+				"srcEmployee, srcDepartment lookup(Deptno == DepartmentNO,",
+				"     multiple: false,",
+				"     pickup: 'any',",
+				"     broadcast: 'auto')~> lookup1",
+				"lookup1 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          EmployeeNo as integer,",
+				"          Ename as string,",
+				"          Job as string,",
+				"          Hiredate as date,",
+				"          DepartmenNo as integer,",
+				"          Dname as string,",
+				"          Location as string,",
+				"          Salary as decimal(19,4),",
+				"          Commission as decimal(19,4)",
+				"     ),",
+				"     format: 'table',",
+				"     store: 'sqlserver',",
+				"     schemaName: 'dbo',",
+				"     tableName: 'employeedetails',",
+				"     insertable: true,",
+				"     updateable: false,",
+				"     deletable: false,",
+				"     upsertable: false,",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          EmployeeNo = Empno,",
+				"          Ename,",
+				"          Job,",
+				"          Hiredate,",
+				"          DepartmenNo = Deptno,",
+				"          Salary,",
+				"          Commission = Comm,",
+				"          Dname = DNAME,",
+				"          Location = LOC",
+				"     )) ~> employeedetails"
+			]
+		}
+	}
+}
