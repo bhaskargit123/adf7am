@@ -86,7 +86,7 @@
 				"     format: 'table',",
 				"     store: 'sqlserver',",
 				"     schemaName: 'dbo',",
-				"     tableName: 'employeedetails',",
+				"     tableName: 'employeedetails_lkp',",
 				"     insertable: true,",
 				"     updateable: false,",
 				"     deletable: false,",
