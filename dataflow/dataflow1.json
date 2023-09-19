@@ -5,61 +5,207 @@
 		"typeProperties": {
 			"sources": [
 				{
-					"dataset": {
-						"referenceName": "ds_adls_datafiles_input_customer",
-						"type": "DatasetReference"
+					"linkedService": {
+						"referenceName": "ls_azSQL_DATASTORE",
+						"type": "LinkedServiceReference"
 					},
-					"name": "srcCustomer"
+					"name": "customer"
+				},
+				{
+					"linkedService": {
+						"referenceName": "ls_azSQL_DATASTORE",
+						"type": "LinkedServiceReference"
+					},
+					"name": "DimCustomerSCD"
 				}
 			],
 			"sinks": [
 				{
-					"dataset": {
-						"referenceName": "ds_azSQL_DATASTORE_customer",
-						"type": "DatasetReference"
+					"linkedService": {
+						"referenceName": "ls_azSQL_DATASTORE",
+						"type": "LinkedServiceReference"
 					},
 					"name": "sink1"
+				},
+				{
+					"linkedService": {
+						"referenceName": "ls_azSQL_DATASTORE",
+						"type": "LinkedServiceReference"
+					},
+					"name": "sink2"
 				}
 			],
 			"transformations": [
 				{
-					"name": "derivedColumn1"
+					"name": "select1"
+				},
+				{
+					"name": "select2"
+				},
+				{
+					"name": "lookup1"
+				},
+				{
+					"name": "split1"
+				},
+				{
+					"name": "select3"
+				},
+				{
+					"name": "derivedColumn3"
+				},
+				{
+					"name": "filter1"
+				},
+				{
+					"name": "select4"
+				},
+				{
+					"name": "union1"
+				},
+				{
+					"name": "surrogateKey1"
+				},
+				{
+					"name": "derivedColumn4"
+				},
+				{
+					"name": "select5"
+				},
+				{
+					"name": "select6"
+				},
+				{
+					"name": "derivedColumn5"
+				},
+				{
+					"name": "alterRow1"
 				}
 			],
 			"scriptLines": [
+				"parameters{",
+				"     pCustKey as integer (1)",
+				"}",
 				"source(output(",
-				"          CustomerKey as short,",
-				"          CustomerName as string",
+				"          Cno as integer,",
+				"          FName as string,",
+				"          Location as string",
 				"     ),",
 				"     allowSchemaDrift: true,",
 				"     validateSchema: false,",
-				"     ignoreNoFilesFound: false) ~> srcCustomer",
-				"srcCustomer derive(FirstName = left(CustomerName, instr(CustomerName, ' ')-1),",
-				"          LastName = right(CustomerName, length(CustomerName)-instr(CustomerName, ' ')),",
-				"          {First Name} = substring(CustomerName, 1, instr(CustomerName, ' ')-1),",
-				"          {Last Name} = substring(CustomerName, instr(CustomerName, ' ')+1, length(CustomerName)-instr(CustomerName, ' '))) ~> derivedColumn1",
-				"derivedColumn1 sink(allowSchemaDrift: true,",
-				"     validateSchema: false,",
-				"     input(",
-				"          CustomerKey as integer,",
-				"          CustomerName as string,",
-				"          FirstName as string,",
-				"          LastName as string",
+				"     format: 'query',",
+				"     store: 'sqlserver',",
+				"     query: 'SELECT Cno, FName, Location FROM customer',",
+				"     isolationLevel: 'READ_UNCOMMITTED') ~> customer",
+				"source(output(",
+				"          CustKey as integer,",
+				"          Cno as integer,",
+				"          FName as string,",
+				"          Location as string",
 				"     ),",
-				"     deletable:false,",
-				"     insertable:true,",
-				"     updateable:false,",
-				"     upsertable:false,",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     format: 'query',",
+				"     store: 'sqlserver',",
+				"     query: 'SELECT CustKey, Cno, FName, Location FROM DimCustomerSCD WHERE EndDate IS NULL',",
+				"     isolationLevel: 'READ_UNCOMMITTED') ~> DimCustomerSCD",
+				"customer select(mapColumn(",
+				"          src_Cno = Cno,",
+				"          src_FName = FName,",
+				"          src_Location = Location",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> select1",
+				"DimCustomerSCD select(mapColumn(",
+				"          trg_CustKey = CustKey,",
+				"          trg_Cno = Cno,",
+				"          trg_FName = FName,",
+				"          trg_Location = Location",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> select2",
+				"select1, select2 lookup(src_Cno == trg_Cno,",
+				"     multiple: false,",
+				"     pickup: 'any',",
+				"     broadcast: 'auto')~> lookup1",
+				"lookup1 split(isNull(trg_Cno),",
+				"     disjoint: false) ~> split1@(NewRecords, ExistedRecords)",
+				"split1@NewRecords select(mapColumn(",
+				"          Cno = src_Cno,",
+				"          FName = src_FName,",
+				"          Location = src_Location",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> select3",
+				"split1@ExistedRecords derive(IsChanged = iif(src_FName != trg_FName || src_Location !=  trg_Location, 1, 0)) ~> derivedColumn3",
+				"derivedColumn3 filter(IsChanged==1) ~> filter1",
+				"filter1 select(mapColumn(",
+				"          Cno = src_Cno,",
+				"          FName = src_FName,",
+				"          Location = src_Location",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> select4",
+				"select3, select4 union(byName: true)~> union1",
+				"union1 keyGenerate(output(SCustKey as long),",
+				"     startAt: 1L,",
+				"     stepValue: 1L) ~> surrogateKey1",
+				"surrogateKey1 derive(CustKey = SCustKey+$pCustKey,",
+				"          StartDate = currentUTC()) ~> derivedColumn4",
+				"derivedColumn4 select(mapColumn(",
+				"          CustKey,",
+				"          Cno,",
+				"          FName,",
+				"          Location,",
+				"          StartDate",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> select5",
+				"filter1 select(mapColumn(",
+				"          CustKey = trg_CustKey",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> select6",
+				"select6 derive(EndDate = currentUTC()) ~> derivedColumn5",
+				"derivedColumn5 alterRow(updateIf(1==1)) ~> alterRow1",
+				"select5 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
 				"     format: 'table',",
+				"     store: 'sqlserver',",
+				"     schemaName: 'dbo',",
+				"     tableName: 'DimCustomerSCD',",
+				"     insertable: true,",
+				"     updateable: false,",
+				"     deletable: false,",
+				"     upsertable: false,",
 				"     skipDuplicateMapInputs: true,",
 				"     skipDuplicateMapOutputs: true,",
 				"     errorHandlingOption: 'stopOnFirstError',",
 				"     mapColumn(",
-				"          CustomerKey,",
-				"          CustomerName,",
-				"          FirstName,",
-				"          LastName",
-				"     )) ~> sink1"
+				"          CustKey,",
+				"          Cno,",
+				"          FName,",
+				"          Location,",
+				"          StartDate",
+				"     )) ~> sink1",
+				"alterRow1 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     format: 'table',",
+				"     store: 'sqlserver',",
+				"     schemaName: 'dbo',",
+				"     tableName: 'DimCustomerSCD',",
+				"     insertable: false,",
+				"     updateable: true,",
+				"     deletable: false,",
+				"     upsertable: false,",
+				"     keys:['CustKey'],",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          CustKey,",
+				"          EndDate",
+				"     )) ~> sink2"
 			]
 		}
 	}
