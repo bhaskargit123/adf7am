@@ -20,7 +20,23 @@
 				}
 			],
 			"sinks": [],
-			"transformations": [],
+			"transformations": [
+				{
+					"name": "srcSelect"
+				},
+				{
+					"name": "trgSelect"
+				},
+				{
+					"name": "lookup1"
+				},
+				{
+					"name": "IsInsertedORExisted"
+				},
+				{
+					"name": "split1"
+				}
+			],
 			"scriptLines": [
 				"source(output(",
 				"          CustomerId as integer,",
@@ -38,17 +54,38 @@
 				"          CustomerKey as integer,",
 				"          CustomerId as integer,",
 				"          Name as string,",
-				"          Location as string,",
-				"          Sales as decimal(19,4),",
-				"          StartDate as timestamp,",
-				"          EndDate as timestamp",
+				"          Sales as decimal(19,4)",
 				"     ),",
 				"     allowSchemaDrift: true,",
 				"     validateSchema: false,",
 				"     format: 'query',",
 				"     store: 'sqlserver',",
-				"     query: 'SELECT * FROM customer\\nWHERE EndDate IS NULL',",
-				"     isolationLevel: 'READ_UNCOMMITTED') ~> trgCustomer"
+				"     query: 'SELECT CustomerKey,CustomerId,Name,Location,Sales FROM customer\\nWHERE EndDate IS NULL',",
+				"     isolationLevel: 'READ_UNCOMMITTED') ~> trgCustomer",
+				"srcCustomer select(mapColumn(",
+				"          Src_CustomerId = CustomerId,",
+				"          Src_Name = Name,",
+				"          Src_Location = Location,",
+				"          Src_Sales = Sales",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> srcSelect",
+				"trgCustomer select(mapColumn(",
+				"          CustomerKey,",
+				"          CustomerId,",
+				"          Name,",
+				"          Sales",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> trgSelect",
+				"srcSelect, trgSelect lookup(Src_CustomerId == trg_CustomerId,",
+				"     multiple: false,",
+				"     pickup: 'any',",
+				"     broadcast: 'auto')~> lookup1",
+				"lookup1 derive(IsInsertedORExisted = iif(isNull(trg_CustomerKey), 'NewRecords', 'ExistedRecords')) ~> IsInsertedORExisted",
+				"IsInsertedORExisted split(IsInsertedORExisted=='NewRecords',",
+				"     IsInsertedORExisted=='ExistedRecords',",
+				"     disjoint: false) ~> split1@(NewRecords, ExistedRecords)"
 			]
 		}
 	}
