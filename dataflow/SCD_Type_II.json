@@ -25,9 +25,6 @@
 					"name": "srcSelect"
 				},
 				{
-					"name": "trgSelect"
-				},
-				{
 					"name": "lookup1"
 				},
 				{
@@ -35,6 +32,9 @@
 				},
 				{
 					"name": "split1"
+				},
+				{
+					"name": "trgSelect"
 				}
 			],
 			"scriptLines": [
@@ -54,6 +54,7 @@
 				"          CustomerKey as integer,",
 				"          CustomerId as integer,",
 				"          Name as string,",
+				"          Location as string,",
 				"          Sales as decimal(19,4)",
 				"     ),",
 				"     allowSchemaDrift: true,",
@@ -70,14 +71,6 @@
 				"     ),",
 				"     skipDuplicateMapInputs: true,",
 				"     skipDuplicateMapOutputs: true) ~> srcSelect",
-				"trgCustomer select(mapColumn(",
-				"          CustomerKey,",
-				"          CustomerId,",
-				"          Name,",
-				"          Sales",
-				"     ),",
-				"     skipDuplicateMapInputs: true,",
-				"     skipDuplicateMapOutputs: true) ~> trgSelect",
 				"srcSelect, trgSelect lookup(Src_CustomerId == trg_CustomerId,",
 				"     multiple: false,",
 				"     pickup: 'any',",
@@ -85,7 +78,16 @@
 				"lookup1 derive(IsInsertedORExisted = iif(isNull(trg_CustomerKey), 'NewRecords', 'ExistedRecords')) ~> IsInsertedORExisted",
 				"IsInsertedORExisted split(IsInsertedORExisted=='NewRecords',",
 				"     IsInsertedORExisted=='ExistedRecords',",
-				"     disjoint: false) ~> split1@(NewRecords, ExistedRecords)"
+				"     disjoint: false) ~> split1@(NewRecords, ExistedRecords)",
+				"trgCustomer select(mapColumn(",
+				"          trg_CustomerKey = CustomerKey,",
+				"          trg_CustomerId = CustomerId,",
+				"          trg_Name = Name,",
+				"          trg_Location = Location,",
+				"          trg_Sales = Sales",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> trgSelect"
 			]
 		}
 	}
