@@ -1,0 +1,201 @@
+{
+	"name": "SCD_Type_II",
+	"properties": {
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"linkedService": {
+						"referenceName": "ls_azSQL_SOURCE",
+						"type": "LinkedServiceReference"
+					},
+					"name": "srcCustomer"
+				},
+				{
+					"linkedService": {
+						"referenceName": "ls_azSQL_TARGET",
+						"type": "LinkedServiceReference"
+					},
+					"name": "trgCustomer"
+				}
+			],
+			"sinks": [
+				{
+					"linkedService": {
+						"referenceName": "ls_azSQL_TARGET",
+						"type": "LinkedServiceReference"
+					},
+					"name": "sink1"
+				},
+				{
+					"linkedService": {
+						"referenceName": "ls_azSQL_TARGET",
+						"type": "LinkedServiceReference"
+					},
+					"name": "sink2"
+				}
+			],
+			"transformations": [
+				{
+					"name": "srcSelect"
+				},
+				{
+					"name": "lookup1"
+				},
+				{
+					"name": "IsInsertedORExisted"
+				},
+				{
+					"name": "split1"
+				},
+				{
+					"name": "trgSelect"
+				},
+				{
+					"name": "derivedColumn1"
+				},
+				{
+					"name": "Modified"
+				},
+				{
+					"name": "select1"
+				},
+				{
+					"name": "select2"
+				},
+				{
+					"name": "union1"
+				},
+				{
+					"name": "derivedColumn2"
+				},
+				{
+					"name": "select3"
+				},
+				{
+					"name": "derivedColumn3"
+				},
+				{
+					"name": "alterRow1"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          CustomerId as integer,",
+				"          Name as string,",
+				"          Location as string,",
+				"          Sales as decimal(19,4)",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     format: 'query',",
+				"     store: 'sqlserver',",
+				"     query: 'SELECT * FROM customer',",
+				"     isolationLevel: 'READ_UNCOMMITTED') ~> srcCustomer",
+				"source(output(",
+				"          CustomerKey as integer,",
+				"          CustomerId as integer,",
+				"          Name as string,",
+				"          Location as string,",
+				"          Sales as decimal(19,4)",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     format: 'query',",
+				"     store: 'sqlserver',",
+				"     query: 'SELECT CustomerKey,CustomerId,Name,Location,Sales FROM customer\\nWHERE EndDate IS NULL',",
+				"     isolationLevel: 'READ_UNCOMMITTED') ~> trgCustomer",
+				"srcCustomer select(mapColumn(",
+				"          Src_CustomerId = CustomerId,",
+				"          Src_Name = Name,",
+				"          Src_Location = Location,",
+				"          Src_Sales = Sales",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> srcSelect",
+				"srcSelect, trgSelect lookup(Src_CustomerId == trg_CustomerId,",
+				"     multiple: false,",
+				"     pickup: 'any',",
+				"     broadcast: 'auto')~> lookup1",
+				"lookup1 derive(IsInsertedORExisted = iif(isNull(trg_CustomerKey), 'NewRecords', 'ExistedRecords')) ~> IsInsertedORExisted",
+				"IsInsertedORExisted split(IsInsertedORExisted=='NewRecords',",
+				"     IsInsertedORExisted=='ExistedRecords',",
+				"     disjoint: false) ~> split1@(NewRecords, ExistedRecords)",
+				"trgCustomer select(mapColumn(",
+				"          trg_CustomerKey = CustomerKey,",
+				"          trg_CustomerId = CustomerId,",
+				"          trg_Name = Name,",
+				"          trg_Location = Location,",
+				"          trg_Sales = Sales",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> trgSelect",
+				"split1@ExistedRecords derive(IsUpdated = iif(Src_Name!=trg_Name || Src_Location!=trg_Location, 'Yes', 'No')) ~> derivedColumn1",
+				"derivedColumn1 filter(IsUpdated=='Yes') ~> Modified",
+				"Modified select(mapColumn(",
+				"          CustomerId = Src_CustomerId,",
+				"          Name = Src_Name,",
+				"          Location = Src_Location,",
+				"          Sales = Src_Sales",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> select1",
+				"split1@NewRecords select(mapColumn(",
+				"          CustomerId = Src_CustomerId,",
+				"          Name = Src_Name,",
+				"          Location = Src_Location,",
+				"          Sales = Src_Sales",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> select2",
+				"select2, select1 union(byName: true)~> union1",
+				"union1 derive(StartDate = currentDate()) ~> derivedColumn2",
+				"Modified select(mapColumn(",
+				"          CustomerKey = trg_CustomerKey",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> select3",
+				"select3 derive(EndDate = currentDate()) ~> derivedColumn3",
+				"derivedColumn3 alterRow(updateIf(1==1)) ~> alterRow1",
+				"derivedColumn2 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     format: 'table',",
+				"     store: 'sqlserver',",
+				"     schemaName: 'dbo',",
+				"     tableName: 'customer',",
+				"     insertable: true,",
+				"     updateable: false,",
+				"     deletable: false,",
+				"     upsertable: false,",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          CustomerId,",
+				"          Name,",
+				"          Location,",
+				"          Sales,",
+				"          StartDate",
+				"     )) ~> sink1",
+				"alterRow1 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     format: 'table',",
+				"     store: 'sqlserver',",
+				"     schemaName: 'dbo',",
+				"     tableName: 'customer',",
+				"     insertable: false,",
+				"     updateable: true,",
+				"     deletable: false,",
+				"     upsertable: false,",
+				"     keys:['CustomerKey'],",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          CustomerKey,",
+				"          EndDate",
+				"     )) ~> sink2"
+			]
+		}
+	}
+}
